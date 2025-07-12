@@ -1,0 +1,2 @@
+*.yml linguist-language=Ansible
+roles/**/*.yml linguist-language=Ansible
