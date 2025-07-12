@@ -1,0 +1,101 @@
+---
+- hosts: openstack
+  become: yes
+  vars_files:
+      - openstack_vars.yml
+  roles:
+  - role: set_common
+    tags: [set_common]
+
+- hosts: openstack
+  tasks:
+  - name: Server come back
+    shell: echo 'server start'
+    register: result
+    until: result.stdout.find("server start") != -1
+    retries: 5
+    delay: 20
+  tags: [wait_host]
+
+- hosts: [openstack]
+  become: yes
+  vars_files:
+      - openstack_vars.yml
+  roles:
+  - role: set_provider_nic
+    tags: [provider_network_card]
+
+
+#- hosts: [block, compute]
+#  become: yes
+#  vars_files:
+#      - openstack_vars.yml
+#  roles:
+#  - role: set_ntp
+#    tags: [ntp]
+
+- hosts: [controller]
+  become: yes
+  vars_files:
+      - openstack_vars.yml
+  roles:
+  - role: install_mariadb
+    tags: [mariadb]
+
+  - role: install_rabbitmq
+    tags: [rabbitmq]
+
+  - role: install_memcached
+    tags: [memcached]
+
+  - role: setup_keystone
+    environment: "{{ KEYSTONERC }}"
+    tags: [keystone]
+
+  - role: setup_glance
+    environment: "{{ OPENRC }}"
+    tags: [glance]
+
+  - role: setup_nova_controller
+    environment: "{{ OPENRC }}"
+    tags: [nova_controller]
+
+  - role: setup_neutron_controller
+    environment: "{{ OPENRC }}"
+    tags: [neutron_controller]
+
+  - role: setup_horizon
+    tags: [horizon]
+
+  - role: setup_cinder_controller
+    environment: "{{ OPENRC }}"
+    tags: [cinder_controller]
+
+#  - role: setup_manila_controller
+#    environment: "{{ OPENRC }}"
+#    tags: [manila_controller]
+
+
+#- hosts: [compute]
+#  become: yes
+#  vars_files:
+#      - openstack_vars.yml
+#  roles:
+#  - role: setup_nova_compute
+#    environment: "{{ OPENRC }}"
+#    tags: [nova_compute]
+
+#  - role: setup_neutron_compute
+#    environment: "{{ OPENRC }}"
+#    tags: [neutron_compute]
+
+#- hosts: [block]
+#  become: yes
+#  vars_files:
+#      - openstack_vars.yml
+#  roles:
+#  - role: setup_cinder_block
+#    tags: [cinder_block]
+
+#  - role: setup_manila_share_nodriver
+#    tags: [manila_share_nodriver]

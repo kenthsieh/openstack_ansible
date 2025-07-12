@@ -1,0 +1,51 @@
+---
+# tasks file for setup_nova_compute
+- name: Install manila share packages
+  apt: pkg={{ item }}
+  with_items:
+    - manila-share
+    - python-pymysql
+    - lvm2
+    - nfs-kernel-server
+
+- name: Configure manila.conf file
+  ini_file:
+      dest: /etc/manila/manila.conf
+      section: "{{item.section}}"
+      option:  "{{item.option}}"
+      value:   "{{item.value}}"
+      backup:  "{{item.backup}}"
+  with_items:
+    - { backup : yes,  section : 'database'             , option : 'connection'      , value: 'mysql+pymysql://manila:{{ MYSQL_MANILA_DBPASS }}@controller/manila'}
+    - { backup : no,   section : 'DEFAULT'              , option : 'rpc_backend'     , value: 'rabbit'}
+    - { backup : no,   section : 'oslo_messaging_rabbit', option : 'rabbit_host'     , value: '{{ RABBITMQ_SERVER }}'}
+    - { backup : no,   section : 'oslo_messaging_rabbit', option : 'rabbit_userid'   , value: '{{ RABBITMQ_USER}}'}
+    - { backup : no,   section : 'oslo_messaging_rabbit', option : 'rabbit_password' , value: '{{ RABBITMQ_PASSWORD }}'}
+    - { backup : no,   section : 'DEFAULT'           , option : 'default_share_type' , value: 'default_share_type'}
+    - { backup : no,   section : 'DEFAULT'           , option : 'rootwrap_config'    , value: '/etc/manila/rootwrap.conf'}
+    - { backup : no,   section : 'DEFAULT'           , option : 'auth_strategy'      , value: 'keystone'}
+    - { backup : no,   section : 'keystone_authtoken', option : 'auth_uri'           , value : 'http://{{ KEYSTONE_SERVER_NAME }}:5000'}
+    - { backup : no,   section : 'keystone_authtoken', option : 'auth_url'           , value : 'http://{{ KEYSTONE_SERVER_NAME }}:35357'}
+    - { backup : no,   section : 'keystone_authtoken', option : 'memcached_servers'  , value : '{{ MEMCACHED_SERVER_NAME }}:11211'}
+    - { backup : no,   section : 'keystone_authtoken', option : 'auth_type'          , value : 'password'}
+    - { backup : no,   section : 'keystone_authtoken', option : 'project_domain_name', value : 'default'}
+    - { backup : no,   section : 'keystone_authtoken', option : 'user_domain_name'   , value : 'default'}
+    - { backup : no,   section : 'keystone_authtoken', option : 'project_name'       , value : 'service'}
+    - { backup : no,   section : 'keystone_authtoken', option : 'username'           , value : 'manila'}
+    - { backup : no,   section : 'keystone_authtoken', option : 'password'           , value : '{{ MANILA_PASSWORD }}'}
+    - { backup : no,   section : 'DEFAULT'           , option : 'my_ip'              , value: '{{ ansible_default_ipv4.address }}'}
+    - { backup : no,   section : 'oslo_concurrency'  , option : 'lock_path'          , value: '/var/lib/manila/tmp'}
+    - { backup : no,   section : 'DEFAULT'           , option : 'enabled_share_backends'  , value: 'lvm'}
+    - { backup : no,   section : 'DEFAULT'           , option : 'enabled_share_protocols' , value: 'NFS,CIFS'}
+    - { backup : no,   section : 'lvm'               , option : 'share_backend_name'      , value: 'LVM'}
+    - { backup : no,   section : 'lvm'               , option : 'share_driver'            , value: 'manila.share.drivers.lvm.LVMShareDriver'}
+    - { backup : no,   section : 'lvm'               , option : 'driver_handles_share_servers' , value: 'False'}
+    - { backup : no,   section : 'lvm'               , option : 'lvm_share_volume_group'       , value: '{{ MANILA_VOLUME_GROUP }}'}
+    - { backup : no,   section : 'lvm'               , option : 'lvm_share_export_ip'          , value: '{{ ansible_default_ipv4.address }}'}
+
+- name: Restart the Manila service
+  service:
+    state: restarted
+    name: "{{ item }}"
+  with_items:
+    - manila-share

@@ -1,0 +1,57 @@
+---
+# tasks file for set_common
+- name: Update the hostname
+  hostname:
+    name: "{{inventory_hostname_short}}"
+  tags: [hostname]
+
+- name: Update hosts file
+  template:
+    src: hosts.j2
+    dest: /etc/hosts
+    owner: root
+    group: root
+    mode: 0644
+  tags: [hosts]
+
+- name: Install common packages
+  apt: pkg={{ item }}
+  with_items:
+    - lrzsz
+    - chrony
+    - software-properties-common
+  tags: [install]
+
+- name: Add openstack newton repository
+  shell: add-apt-repository -y cloud-archive:newton
+  tags: [install]
+
+- name: Upgrade Packages ( apt update && apt dist-upgrade )
+  apt:
+    update_cache: yes
+    upgrade: dist
+  tags: [install]
+
+- name: Install openstack client
+  apt: pkg={{ item }}
+  with_items:
+    - python-openstackclient
+  tags: [install]
+
+- name: Restart Server
+  shell: sleep 2 && shutdown -r now
+  async: 1
+  poll: 0
+  tags: [reboot]
+
+- name: Waiting for server to come back
+  local_action: wait_for host={{ ansible_ssh_host }} port={{ ansible_ssh_port }} state=started delay=30 timeout=300 connect_timeout=15
+  tags: [reboot]
+
+- name: server start
+  shell: echo 'server start'
+  register: result
+  until: result.stdout.find("server start") != -1
+  retries: 5
+  delay: 10
+  tags: [reboot]

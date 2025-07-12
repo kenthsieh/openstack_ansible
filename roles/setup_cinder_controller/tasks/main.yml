@@ -1,0 +1,86 @@
+---
+# tasks file for setup_cinder_controller
+- name: Create cinder database
+  shell: "{{ item }}"
+  with_items:
+    - mysql -u root -p{{ MYSQL_ROOT_PASSWORD }} -e "CREATE DATABASE cinder; "
+    - mysql -u root -p{{ MYSQL_ROOT_PASSWORD }} -e "GRANT ALL PRIVILEGES ON cinder.* TO 'cinder'@'localhost' IDENTIFIED BY '{{ MYSQL_CINDER_DBPASS }}'; "
+    - mysql -u root -p{{ MYSQL_ROOT_PASSWORD }} -e "GRANT ALL PRIVILEGES ON cinder.* TO 'cinder'@'%' IDENTIFIED BY '{{ MYSQL_CINDER_DBPASS }}'; "
+
+- name: Create user and add to role
+  shell: "{{ item }}"
+  with_items:
+    - openstack user create --domain default --password {{ CINDER_PASSWORD }} cinder
+    - openstack role add --project service --user cinder admin
+
+- name: Create the service entity and API endpoints
+  shell: "{{ item }}"
+  with_items:
+    - openstack service create --name cinder --description "OpenStack Block Storage" volume
+    - openstack service create --name cinderv2 --description "OpenStack Block Storage" volumev2
+    - openstack endpoint create --region RegionOne volume public http://{{ CINDER_SERVER_NAME }}:8776/v1/%\(tenant_id\)s
+    - openstack endpoint create --region RegionOne volume internal http://{{ CINDER_SERVER_NAME }}:8776/v1/%\(tenant_id\)s
+    - openstack endpoint create --region RegionOne volume admin http://{{ CINDER_SERVER_NAME }}:8776/v1/%\(tenant_id\)s
+    - openstack endpoint create --region RegionOne volumev2 public http://{{ CINDER_SERVER_NAME }}:8776/v2/%\(tenant_id\)s
+    - openstack endpoint create --region RegionOne volumev2 internal http://{{ CINDER_SERVER_NAME }}:8776/v2/%\(tenant_id\)s
+    - openstack endpoint create --region RegionOne volumev2 admin http://{{ CINDER_SERVER_NAME }}:8776/v2/%\(tenant_id\)s
+
+- name: Install cinder controller packages
+  apt: pkg={{ item }}
+  with_items:
+    - cinder-api
+    - cinder-scheduler
+
+- name: Configure cinder.conf file
+  ini_file:
+      dest: /etc/cinder/cinder.conf
+      section: "{{item.section}}"
+      option:  "{{item.option}}"
+      value:   "{{item.value}}"
+      backup:  "{{item.backup}}"
+  with_items:
+    - { backup : yes,  section : 'database'             , option : 'connection'      , value: 'mysql+pymysql://cinder:{{ MYSQL_CINDER_DBPASS }}@controller/cinder'}
+    - { backup : no,   section : 'DEFAULT'              , option : 'rpc_backend'     , value: 'rabbit'}
+    - { backup : no,   section : 'oslo_messaging_rabbit', option : 'rabbit_host'     , value: '{{ RABBITMQ_SERVER }}'}
+    - { backup : no,   section : 'oslo_messaging_rabbit', option : 'rabbit_userid'   , value: '{{ RABBITMQ_USER }}'}
+    - { backup : no,   section : 'oslo_messaging_rabbit', option : 'rabbit_password' , value: '{{ RABBITMQ_PASSWORD }}'}
+    - { backup : no,   section : 'DEFAULT'           , option : 'auth_strategy'      , value: 'keystone'}
+    - { backup : no,   section : 'keystone_authtoken', option : 'auth_uri'           , value : 'http://{{ KEYSTONE_SERVER_NAME }}:5000'}
+    - { backup : no,   section : 'keystone_authtoken', option : 'auth_url'           , value : 'http://{{ KEYSTONE_SERVER_NAME }}:35357'}
+    - { backup : no,   section : 'keystone_authtoken', option : 'memcached_servers'  , value : '{{ MEMCACHED_SERVER_NAME }}:11211'}
+    - { backup : no,   section : 'keystone_authtoken', option : 'auth_type'          , value : 'password'}
+    - { backup : no,   section : 'keystone_authtoken', option : 'project_domain_name', value : 'default'}
+    - { backup : no,   section : 'keystone_authtoken', option : 'user_domain_name'   , value : 'default'}
+    - { backup : no,   section : 'keystone_authtoken', option : 'project_name'       , value : 'service'}
+    - { backup : no,   section : 'keystone_authtoken', option : 'username'           , value : 'cinder'}
+    - { backup : no,   section : 'keystone_authtoken', option : 'password'           , value : '{{ CINDER_PASSWORD }}'}
+    - { backup : no,   section : 'DEFAULT'           , option : 'my_ip'              , value : '{{ ansible_default_ipv4.address }}'}
+    - { backup : no,   section : 'oslo_concurrency'  , option : 'lock_path'          , value : '/var/lib/cinder/tmp'}
+  tags: cinder_controller_cinder
+
+- name: Populate the Cinder database
+  shell: "{{ item }}"
+  with_items:
+    - cinder-manage db sync
+  tags: cinder_controller_populate_database
+
+- name: Configure nova.conf file
+  ini_file:
+      dest: /etc/nova/nova.conf
+      section: "{{item.section}}"
+      option:  "{{item.option}}"
+      value:   "{{item.value}}"
+      backup: yes
+  with_items:
+    - { section : 'cinder'           , option : 'os_region_name'       , value: 'RegionOne'}
+  tags: cinder_controller_nova
+
+- name: Restart the Cinder service
+  service:
+    state: restarted
+    name: "{{ item }}"
+  with_items:
+    - nova-api
+    - cinder-scheduler
+    - cinder-api
+  tags: cinder_controller_restart_service

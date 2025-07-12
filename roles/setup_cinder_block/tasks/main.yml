@@ -1,0 +1,47 @@
+---
+# tasks file for setup_nova_compute
+- name: Install cinder block packages
+  apt: pkg={{ item }}
+  with_items:
+    - lvm2
+    - cinder-volume
+
+- name: Configure cinder.conf file
+  ini_file:
+      dest: /etc/cinder/cinder.conf
+      section: "{{item.section}}"
+      option:  "{{item.option}}"
+      value:   "{{item.value}}"
+      backup:  "{{item.backup}}"
+  with_items:
+    - { backup : yes,  section : 'database'             , option : 'connection'      , value: 'mysql+pymysql://cinder:{{ MYSQL_CINDER_DBPASS }}@controller/cinder'}
+    - { backup : no,   section : 'DEFAULT'              , option : 'rpc_backend'     , value: 'rabbit'}
+    - { backup : no,   section : 'oslo_messaging_rabbit', option : 'rabbit_host'     , value: '{{ RABBITMQ_SERVER }}'}
+    - { backup : no,   section : 'oslo_messaging_rabbit', option : 'rabbit_userid'   , value: '{{ RABBITMQ_USER}}'}
+    - { backup : no,   section : 'oslo_messaging_rabbit', option : 'rabbit_password' , value: '{{ RABBITMQ_PASSWORD }}'}
+    - { backup : no,   section : 'DEFAULT'           , option : 'auth_strategy'      , value: 'keystone'}
+    - { backup : no,   section : 'keystone_authtoken', option : 'auth_uri'           , value : 'http://{{ KEYSTONE_SERVER_NAME }}:5000'}
+    - { backup : no,   section : 'keystone_authtoken', option : 'auth_url'           , value : 'http://{{ KEYSTONE_SERVER_NAME }}:35357'}
+    - { backup : no,   section : 'keystone_authtoken', option : 'memcached_servers'  , value : '{{ MEMCACHED_SERVER_NAME }}:11211'}
+    - { backup : no,   section : 'keystone_authtoken', option : 'auth_type'          , value : 'password'}
+    - { backup : no,   section : 'keystone_authtoken', option : 'project_domain_name', value : 'default'}
+    - { backup : no,   section : 'keystone_authtoken', option : 'user_domain_name'   , value : 'default'}
+    - { backup : no,   section : 'keystone_authtoken', option : 'project_name'       , value : 'service'}
+    - { backup : no,   section : 'keystone_authtoken', option : 'username'           , value : 'cinder'}
+    - { backup : no,   section : 'keystone_authtoken', option : 'password'           , value : '{{ CINDER_PASSWORD }}'}
+    - { backup : no,   section : 'DEFAULT'           , option : 'my_ip'              , value: '{{ ansible_default_ipv4.address }}'}
+    - { backup : no,   section : 'lvm'               , option : 'volume_driver'      , value: 'cinder.volume.drivers.lvm.LVMVolumeDriver'}
+    - { backup : no,   section : 'lvm'               , option : 'volume_group'       , value: '{{ CINDER_VOLUME_GROUP }}'}
+    - { backup : no,   section : 'lvm'               , option : 'iscsi_protocol'     , value: 'iscsi'}
+    - { backup : no,   section : 'lvm'               , option : 'iscsi_helper'       , value: 'tgtadm'}
+    - { backup : no,   section : 'DEFAULT'           , option : 'enabled_backends'   , value: 'lvm'}
+    - { backup : no,   section : 'DEFAULT'           , option : 'glance_api_servers' , value: 'http://{{ GLANCE_SERVER_NAME }}:9292'}
+    - { backup : no,   section : 'oslo_concurrency'  , option : 'lock_path'          , value: '/var/lib/cinder/tmp'}
+
+- name: Restart the Cinder service
+  service:
+    state: restarted
+    name: "{{ item }}"
+  with_items:
+    - tgt
+    - cinder-volume

@@ -1,0 +1,119 @@
+---
+# tasks file for setup_keystone
+- name: Create keystone database
+  shell: "{{ item }}"
+  with_items:
+    - mysql -u root -p{{ MYSQL_ROOT_PASSWORD }} -e "CREATE DATABASE keystone;"
+    - mysql -u root -p{{ MYSQL_ROOT_PASSWORD }} -e "GRANT ALL PRIVILEGES ON keystone.* TO 'keystone'@'localhost' IDENTIFIED BY '{{ MYSQL_KEYSTONE_DBPASS }}';"
+    - mysql -u root -p{{ MYSQL_ROOT_PASSWORD }} -e "GRANT ALL PRIVILEGES ON keystone.* TO 'keystone'@'%' IDENTIFIED BY '{{ MYSQL_KEYSTONE_DBPASS }}';"
+
+- name: Disable the keystone service from starting automatically after installation
+  shell: echo 'manual' > /etc/init/keystone.override
+
+- name: Install keystone packages
+  apt: pkg={{ item }}
+  with_items:
+    - keystone
+
+- name: Configure keystone.conf file
+  ini_file:
+      dest: /etc/keystone/keystone.conf
+      section: "{{item.section}}"
+      option:  "{{item.option}}"
+      value:   "{{item.value}}"
+      backup:  "{{item.backup}}"
+  with_items:
+    - { backup : yes, section : 'DEFAULT' , option : 'admin_token', value : '{{ TOKEN_KEY }}' }
+    - { backup : no , section : 'database', option : 'connection' , value : 'mysql+pymysql://keystone:{{ MYSQL_KEYSTONE_DBPASS }}@controller/keystone' }
+    - { backup : no , section : 'token'   , option : 'provider'   , value : 'fernet' }
+
+- name: Populate the Identity service database
+  shell: "{{ item }}"
+  with_items:
+    - keystone-manage db_sync
+
+- name: Initialize Fernet keys & bootstrap service
+  shell: "{{ item }}"
+  with_items:
+    - keystone-manage fernet_setup --keystone-user keystone --keystone-group keystone
+    - keystone-manage credential_setup --keystone-user keystone --keystone-group keystone
+    - keystone-manage bootstrap --bootstrap-password {{ KEYSTONE_ADMIN_PASSWORD }} --bootstrap-admin-url http://{{ KEYSTONE_SERVER_NAME }}:35357/v3/ --bootstrap-internal-url http://{{ KEYSTONE_SERVER_NAME }}:35357/v3/ --bootstrap-public-url http://{{ KEYSTONE_SERVER_NAME }}:5000/v3/ --bootstrap-region-id RegionOne
+
+- name: Set apache server name
+  lineinfile:
+    dest: /etc/apache2/apache2.conf
+    regexp: "# Global(.*)"
+    line: "{{ '\t' }}ServerName {{ KEYSTONE_SERVER_NAME }}{{ '\t' }}"
+    backup: "yes"
+
+- name: Restart apahce http server
+  service:
+    name: apache2
+    state: restarted
+
+- name: Remove the SQLite database file
+  shell: rm -f /var/lib/keystone/keystone.db
+
+- name: Create the service entity and API endpoints
+  shell: "{{ item }}"
+  with_items:
+    - openstack service create --name keystone --description "OpenStack Identity" identity
+    - openstack endpoint create --region RegionOne identity public http://{{ KEYSTONE_SERVER_NAME }}:5000/v3
+    - openstack endpoint create --region RegionOne identity internal http://{{ KEYSTONE_SERVER_NAME }}:5000/v3
+    - openstack endpoint create --region RegionOne identity admin http://{{ KEYSTONE_SERVER_NAME }}:35357/v3
+
+- name: Create a domain, projects, users, and roles
+  shell: "{{ item }}"
+  with_items:
+    - openstack domain create --description 'Default Domain' default
+    - openstack project create --domain default --description 'Admin Project' admin
+    - openstack user create --domain default --password {{ KEYSTONE_ADMIN_PASSWORD }} admin
+    - openstack role create admin
+    - openstack role add --project admin --user admin admin
+    - openstack project create --domain default --description 'Service Project' service
+    - openstack project create --domain default --description 'Demo Project' demo
+    - openstack user create --domain default --password {{ KEYSTONE_DEMO_PASSWORD }} demo
+    - openstack role create user
+    - openstack role add --project demo --user demo user
+
+- name: For security reasons, disable the temporary authentication token mechanism
+  replace:
+    dest: /etc/keystone/keystone-paste.ini
+    regexp: "pipeline = cors sizelimit url_normalize request_id admin_token_auth"
+    replace: "pipeline = cors sizelimit url_normalize request_id"
+    backup: "yes"
+
+- name: Unset the temporary OS_TOKEN and OS_URL environment variables
+  shell: "{{ item }}"
+  with_items:
+    - unset OS_TOKEN OS_URL
+
+- name: Create admin script
+  blockinfile:
+    dest: "{{ ansible_user_dir }}/admin-openrc"
+    create: yes
+    insertbefore: BOF
+    block: |
+      export OS_PROJECT_DOMAIN_NAME=default
+      export OS_USER_DOMAIN_NAME=default
+      export OS_PROJECT_NAME=admin
+      export OS_USERNAME=admin
+      export OS_PASSWORD={{KEYSTONE_ADMIN_PASSWORD }}
+      export OS_AUTH_URL=http://{{ KEYSTONE_SERVER_NAME }}:35357/v3
+      export OS_IDENTITY_API_VERSION=3
+      export OS_IMAGE_API_VERSION=2
+
+- name: Create demo script
+  blockinfile:
+    dest: "{{ ansible_user_dir }}/demo-openrc"
+    create: yes
+    insertbefore: BOF
+    block: |
+      export OS_PROJECT_DOMAIN_NAME=default
+      export OS_USER_DOMAIN_NAME=default
+      export OS_PROJECT_NAME=demo
+      export OS_USERNAME=demo
+      export OS_PASSWORD={{ KEYSTONE_DEMO_PASSWORD }}
+      export OS_AUTH_URL=http://{{ KEYSTONE_SERVER_NAME }}:5000/v3
+      export OS_IDENTITY_API_VERSION=3
+      export OS_IMAGE_API_VERSION=2

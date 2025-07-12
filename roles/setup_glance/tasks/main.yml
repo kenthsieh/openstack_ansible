@@ -1,0 +1,86 @@
+---
+# tasks file for setup_glance
+- name: Create glance database
+  shell: "{{ item }}"
+  with_items:
+    - mysql -u root -p{{ MYSQL_ROOT_PASSWORD }} -e "CREATE DATABASE glance;"
+    - mysql -u root -p{{ MYSQL_ROOT_PASSWORD }} -e "GRANT ALL PRIVILEGES ON glance.* TO 'glance'@'localhost' IDENTIFIED BY '{{ MYSQL_GLANCE_DBPASS }}';"
+    - mysql -u root -p{{ MYSQL_ROOT_PASSWORD }} -e "GRANT ALL PRIVILEGES ON glance.* TO 'glance'@'%' IDENTIFIED BY '{{ MYSQL_GLANCE_DBPASS }}';"
+
+- name: Create user and add to role
+  shell: "{{ item }}"
+  with_items:
+    - openstack user create --domain default --password {{ GLANCE_PASSWORD }} glance
+    - openstack role add --project service --user glance admin
+
+- name: Create the service entity and API endpoints
+  shell: "{{ item }}"
+  with_items:
+    - openstack service create --name glance --description "OpenStack Image service" image
+    - openstack endpoint create --region RegionOne image public http://{{ GLANCE_SERVER_NAME }}:9292
+    - openstack endpoint create --region RegionOne image internal http://{{ GLANCE_SERVER_NAME }}:9292
+    - openstack endpoint create --region RegionOne image admin http://{{ GLANCE_SERVER_NAME }}:9292
+
+- name: Install glance packages
+  apt:
+    name: "glance"
+
+- name: Configure glance-api.conf file
+  ini_file:
+    dest: /etc/glance/glance-api.conf
+    section: "{{ item.section }}"
+    option:  "{{ item.option }}"
+    value :  "{{ item.value }}"
+    backup:  "{{ item.backup }}"
+  with_items:
+    - { backup : 'yes', section : 'database'          , option : 'connection'         , value: 'mysql+pymysql://glance:{{ MYSQL_GLANCE_DBPASS }}@controller/glance'}
+    - { backup : 'no' , section : 'keystone_authtoken', option : 'auth_uri'           , value : 'http://{{ KEYSTONE_SERVER_NAME }}:5000'}
+    - { backup : 'no' , section : 'keystone_authtoken', option : 'auth_url'           , value : 'http://{{ KEYSTONE_SERVER_NAME }}:35357'}
+    - { backup : 'no' , section : 'keystone_authtoken', option : 'memcached_servers'  , value : '{{ MEMCACHED_SERVER_NAME }}:11211'}
+    - { backup : 'no' , section : 'keystone_authtoken', option : 'auth_type'          , value : 'password'}
+    - { backup : 'no' , section : 'keystone_authtoken', option : 'project_domain_name', value : 'default'}
+    - { backup : 'no' , section : 'keystone_authtoken', option : 'user_domain_name'   , value : 'default'}
+    - { backup : 'no' , section : 'keystone_authtoken', option : 'project_name'       , value : 'service'}
+    - { backup : 'no' , section : 'keystone_authtoken', option : 'username'           , value : 'glance'}
+    - { backup : 'no' , section : 'keystone_authtoken', option : 'password'           , value : '{{ GLANCE_PASSWORD }}'}
+    - { backup : 'no' , section : 'paste_deploy'      , option : 'flavor'             , value : 'keystone'}
+    - { backup : 'no' , section : 'glance_store'      , option : 'stores'                     , value : 'file,http'}
+    - { backup : 'no' , section : 'glance_store'      , option : 'default_store'              , value : 'file'}
+    - { backup : 'no' , section : 'glance_store'      , option : 'filesystem_store_datadir'   , value : '/var/lib/glance/images/'}
+
+- name: Configure glance-registry.conf file
+  ini_file:
+    dest: /etc/glance/glance-registry.conf
+    section: "{{item.section}}"
+    option:  "{{item.option}}"
+    value:   "{{item.value}}"
+    backup:  "{{item.backup}}"
+  with_items:
+    - { backup : 'yes', section : 'database'          , option : 'connection'         , value: 'mysql+pymysql://glance:{{ MYSQL_GLANCE_DBPASS }}@controller/glance'}
+    - { backup : 'no' , section : 'keystone_authtoken', option : 'auth_uri'           , value : 'http://{{ KEYSTONE_SERVER_NAME }}:5000'}
+    - { backup : 'no' , section : 'keystone_authtoken', option : 'auth_url'           , value : 'http://{{ KEYSTONE_SERVER_NAME }}:35357'}
+    - { backup : 'no' , section : 'keystone_authtoken', option : 'memcached_servers'  , value : '{{ MEMCACHED_SERVER_NAME }}:11211'}
+    - { backup : 'no' , section : 'keystone_authtoken', option : 'auth_type'          , value : 'password'}
+    - { backup : 'no' , section : 'keystone_authtoken', option : 'project_domain_name', value : 'default'}
+    - { backup : 'no' , section : 'keystone_authtoken', option : 'user_domain_name'   , value : 'default'}
+    - { backup : 'no' , section : 'keystone_authtoken', option : 'project_name'       , value : 'service'}
+    - { backup : 'no' , section : 'keystone_authtoken', option : 'username'           , value : 'glance'}
+    - { backup : 'no' , section : 'keystone_authtoken', option : 'password'           , value : '{{ GLANCE_PASSWORD }}'}
+    - { backup : 'no' , section : 'paste_deploy'      , option : 'flavor'             , value : 'keystone'}
+
+- name: Populate the Image service database
+  shell: glance-manage db_sync
+
+- name: Restart the Image service
+  service:
+    state: restarted
+    name: "{{ item }}"
+  with_items:
+    - glance-registry
+    - glance-api
+
+- name: Download cirros image and upload to Image service
+  shell: "{{ item }}"
+  with_items:
+    - wget http://download.cirros-cloud.net/0.3.4/cirros-0.3.4-x86_64-disk.img
+    - openstack image create 'cirros' --file cirros-0.3.4-x86_64-disk.img --disk-format qcow2 --container-format bare --public

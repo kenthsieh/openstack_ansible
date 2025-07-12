@@ -1,0 +1,41 @@
+---
+# tasks file for install_mongodb
+- name: Install MongoDB, MongoDB Clinet, PyMongo
+  apt: pkg={{ item }}
+  with_items:
+    - mongodb-server
+    - mongodb-clients
+    - python-pymongo
+  tags: [mongodb]
+
+- name: Configure MongoDB
+  lineinfile :
+     dest: /etc/mongodb.conf
+     regexp: "{{ item.regexp }}"
+     line:   "{{ item.line }}"
+     backup: "{{ item.backup }}"
+     state:  "{{ item.state }}"
+  with_items:
+    - {regexp: '^bind_ip = 127.0.0.1$', line: 'smallfiles = true', backup: 'yes', state: 'present'}
+    - {regexp: '^bind_ip = 127.0.0.1$', line: 'bind_ip = {{ ansible_default_ipv4.address }}', backup: 'no', state: 'present'}
+    - {regexp: '^bind_ip = 127.0.0.1$', line: '', backup: 'no', state: 'absent'}
+  tags: [mongodb]
+
+- name: Stop MongoDB
+  service :
+    name : mongodb
+    state: stopped
+  tags: [mongodb]
+
+- name: Remove old journal
+  raw: rm -f /var/lib/mongodb/journal/prealloc.*
+  tags: [mongodb]
+
+- name: Start MongoDB
+  service :
+    name : mongodb
+    state: started
+  tags: [mongodb]
+
+
+

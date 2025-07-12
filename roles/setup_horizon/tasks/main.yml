@@ -1,0 +1,41 @@
+---
+# tasks file for setup_horizon
+- name: Install horizon packages
+  apt: pkg={{ item }}
+  with_items:
+    - openstack-dashboard
+
+- name: Configure local_setting.py file (Replace)
+  replace:
+    dest: /etc/openstack-dashboard/local_settings.py
+    regexp: "{{ item.regexp }}"
+    replace: "{{ item.replace }}"
+    backup: "{{ item.backup }}"
+  with_items:
+    - { regexp: 'OPENSTACK_HOST = "127.0.0.1"',  replace: 'OPENSTACK_HOST = "{{ KEYSTONE_SERVER_NAME }}"', backup: 'yes'}
+    - { regexp: "ALLOWED_HOSTS = '\\*'",           replace: "ALLOWED_HOSTS = ['*',]", backup: 'no'}
+    - { regexp: "'LOCATION': '127.0.0.1:11211'", replace: "'LOCATION': '{{ MEMCACHED_SERVER_NAME }}:11211'", backup: 'no'}
+    - { regexp: 'OPENSTACK_KEYSTONE_URL = "http://%s:5000/v2.0" % OPENSTACK_HOST', replace: 'OPENSTACK_KEYSTONE_URL = "http://%s:5000/v3" % OPENSTACK_HOST', backup: 'no'}
+    - { regexp: "#OPENSTACK_KEYSTONE_MULTIDOMAIN_SUPPORT = False", replace: "OPENSTACK_KEYSTONE_MULTIDOMAIN_SUPPORT = True", backup: 'no'}
+    - { regexp: "#OPENSTACK_KEYSTONE_DEFAULT_DOMAIN = 'default'", replace: "OPENSTACK_KEYSTONE_DEFAULT_DOMAIN = 'default'", backup: 'no'}
+    - { regexp: 'OPENSTACK_KEYSTONE_DEFAULT_ROLE = "_member_"', replace: 'OPENSTACK_KEYSTONE_DEFAULT_ROLE = "user"', backup: 'no'}
+    - { regexp: 'TIME_ZONE = "UTC"', replace: 'TIME_ZONE = "{{ TIME_ZONE }}"', backup: 'no'}
+
+- name: Configure local_setting.py file (Add)
+  blockinfile:
+    dest: /etc/openstack-dashboard/local_settings.py
+    create: no
+    insertafter: EOF
+    block: |
+      SESSION_ENGINE = 'django.contrib.sessions.backends.cache'
+
+      OPENSTACK_API_VERSIONS = {
+          "identity": 3,
+          "image": 2,
+          "volume": 2,
+      }
+
+- name: Reload Apache2
+  service :
+    name : apache2
+    state: reloaded

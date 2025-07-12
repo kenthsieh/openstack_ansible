@@ -1,0 +1,15 @@
+---
+# tasks file for install_rabbitmq
+- name: Install RabbitMQ
+  apt: pkg={{ item }}
+  with_items:
+    - rabbitmq-server
+  tags: [rabbitmq]
+
+- name: Add openstack user to RabbitMQ
+  raw: rabbitmqctl add_user {{ RABBITMQ_USER }} {{ RABBITMQ_PASSWORD }} 
+  tags: [rabbitmq]
+
+- name: Permit configuration, write, and read access for the openstack use
+  raw: rabbitmqctl set_permissions {{ RABBITMQ_USER }} ".*" ".*" ".*"
+  tags: [rabbitmq]

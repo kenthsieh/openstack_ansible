@@ -1,0 +1,21 @@
+---
+# tasks file for set_ntp
+- name : Sync time with internet ntp server 
+  lineinfile : 
+     dest: /etc/chrony/chrony.conf
+     regexp: "{{ item.regexp }}"
+     line:   "{{ item.line }}"
+     backup: "{{ item.backup }}"
+     state:  "{{ item.state }}"
+  with_items:
+    - {regexp: '^server.*\.ntp\..*minpoll 8$', line: '', backup: 'yes', state: 'absent'}
+    - {regexp: '^# better to use IP numbers than host names.', line: "{{'\n'}}server controller iburst", backup: 'no', state: 'present' }
+  tags: [ntp]
+
+- name : Restart Chrony
+  service :
+    name : chrony
+    state: restarted
+  tags: [ntp]
+
+

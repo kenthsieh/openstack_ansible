@@ -1,0 +1,10 @@
+---
+# tasks file for set_provider_nic
+- name: Add new network card for provider
+  lineinfile:
+    dest: /etc/network/interfaces
+    line: "# The provider network interface{{'\n'}}auto {{ INTERFACE_NAME }}{{'\n'}}iface {{ INTERFACE_NAME }} inet manual{{'\n'}}up ip link set dev $IFACE up{{'\n'}}down ip link set dev $IFACE down"
+    state: present
+
+- name: Up new network card for provider
+  shell: /sbin/ifup {{ INTERFACE_NAME }}

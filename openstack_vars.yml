@@ -1,0 +1,68 @@
+GROUP_NAME: "{{ groups['openstack'] }}"
+
+# MySQL
+MYSQL_ROOT_PASSWORD: "openstack"
+
+# RabbitMQ
+RABBITMQ_SERVER: "controller"
+RABBITMQ_USER: "openstack"
+RABBITMQ_PASSWORD: "openstack"
+
+# memcached
+MEMCACHED_SERVER_NAME: "controller"
+
+# The provider network interface
+INTERFACE_NAME: "eth1"
+
+# Keystone
+MYSQL_KEYSTONE_DBPASS: "KEYSTONE_DBPASS"
+TOKEN_KEY: "b3e4ee7ab2fc14efe2a7"
+KEYSTONE_SERVER_NAME: "controller"
+KEYSTONE_ADMIN_PASSWORD: "openstack"
+KEYSTONE_DEMO_PASSWORD: "openstack"
+KEYSTONERC:
+  OS_TOKEN: "{{ TOKEN_KEY }}"
+  OS_URL: "http://{{ KEYSTONE_SERVER_NAME }}:35357/v3"
+  OS_IDENTITY_API_VERSION: 3
+
+# admin-openrc
+OPENRC:
+  OS_PROJECT_DOMAIN_NAME : "default"
+  OS_USER_DOMAIN_NAME    : "default"
+  OS_PROJECT_NAME        : "admin"
+  OS_USERNAME            : "admin"
+  OS_PASSWORD            : "{{ KEYSTONE_ADMIN_PASSWORD }}"
+  OS_AUTH_URL            : "http://{{ KEYSTONE_SERVER_NAME }}:35357/v3"
+  OS_IDENTITY_API_VERSION : 3
+  OS_IMAGE_API_VERSION    : 2
+
+# Glance
+MYSQL_GLANCE_DBPASS: "GLANCE_DBPASS"
+GLANCE_PASSWORD: "openstack"
+GLANCE_SERVER_NAME: "controller"
+
+# Nova
+MYSQL_NOVA_DBPASS: "NOVA_DBPASS"
+NOVA_PASSWORD: "openstack"
+NOVA_SERVER_NAME: "controller"
+
+# Neutron
+MYSQL_NEUTRON_DBPASS: "NEUTRON_DBPASS"
+NEUTRON_PASSWORD: "openstack"
+NEUTRON_SERVER_NAME: "controller"
+METADATA_SECRET: "8218fb03156e6dba11f6"
+
+# Horizon
+TIME_ZONE: "Asia/Taipei"
+
+# Cinder
+MYSQL_CINDER_DBPASS: "CINDER_DBPASS"
+CINDER_PASSWORD: "openstack"
+CINDER_SERVER_NAME: "controller"
+CINDER_VOLUME_GROUP: "cinder-volumes"
+
+# Manila
+MYSQL_MANILA_DBPASS: "MANILA_DBPASS"
+MANILA_PASSWORD: "openstack"
+MANILA_SERVER_NAME: "controller"
+MANILA_VOLUME_GROUP: "cinder-volumes"

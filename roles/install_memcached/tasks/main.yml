@@ -1,0 +1,19 @@
+---
+# tasks file for install_memcached
+- name: Install Memcached, Python-memcache
+  apt: pkg={{ item }}
+  with_items:
+    - memcached
+    - python-memcache
+
+- name: Configure Memcached
+  replace:
+    dest: /etc/memcached.conf
+    regexp: "-l 127.0.0.1"
+    replace: "-l {{ ansible_default_ipv4.address }}"
+    backup: yes
+
+- name : Restart Memcached
+  service :
+    name : memcached
+    state: restarted

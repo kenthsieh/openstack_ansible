@@ -1,0 +1,64 @@
+---
+# tasks file for setup_nova_compute
+- name: Install nova compute packages
+  apt: pkg={{ item }}
+  with_items:
+    - nova-compute
+    - cpu-checker
+
+- name: Configure nova.conf file
+  ini_file:
+      dest: /etc/nova/nova.conf
+      section: "{{item.section}}"
+      option:  "{{item.option}}"
+      value:   "{{item.value}}"
+      backup:  "{{item.backup}}"
+  with_items:
+    - { backup : yes,  section : 'DEFAULT'              , option : 'rpc_backend'     , value: 'rabbit'}
+    - { backup : no,   section : 'oslo_messaging_rabbit', option : 'rabbit_host'     , value: '{{ RABBITMQ_SERVER }}'}
+    - { backup : no,   section : 'oslo_messaging_rabbit', option : 'rabbit_userid'   , value: '{{ RABBITMQ_USER}}'}
+    - { backup : no,   section : 'oslo_messaging_rabbit', option : 'rabbit_password' , value: '{{ RABBITMQ_PASSWORD }}'}
+    - { backup : no,   section : 'DEFAULT'           , option : 'auth_strategy'      , value: 'keystone'}
+    - { backup : no,   section : 'keystone_authtoken', option : 'auth_uri'           , value : 'http://{{ KEYSTONE_SERVER_NAME }}:5000'}
+    - { backup : no,   section : 'keystone_authtoken', option : 'auth_url'           , value : 'http://{{ KEYSTONE_SERVER_NAME }}:35357'}
+    - { backup : no,   section : 'keystone_authtoken', option : 'memcached_servers'  , value : '{{ MEMCACHED_SERVER_NAME }}:11211'}
+    - { backup : no,   section : 'keystone_authtoken', option : 'auth_type'          , value : 'password'}
+    - { backup : no,   section : 'keystone_authtoken', option : 'project_domain_name', value : 'default'}
+    - { backup : no,   section : 'keystone_authtoken', option : 'user_domain_name'   , value : 'default'}
+    - { backup : no,   section : 'keystone_authtoken', option : 'project_name'       , value : 'service'}
+    - { backup : no,   section : 'keystone_authtoken', option : 'username'           , value : 'nova'}
+    - { backup : no,   section : 'keystone_authtoken', option : 'password'           , value : '{{ NOVA_PASSWORD }}'}
+    - { backup : no,   section : 'DEFAULT'           , option : 'my_ip'              , value: '{{ ansible_default_ipv4.address }}'}
+    - { backup : no,   section : 'DEFAULT'           , option : 'use_neutron'        , value: 'True'}
+    - { backup : no,   section : 'DEFAULT'           , option : 'firewall_driver'    , value: 'nova.virt.firewall.NoopFirewallDriver'}
+    - { backup : no,   section : 'vnc'               , option : 'enabled'            , value: 'True'}
+    - { backup : no,   section : 'vnc'               , option : 'vncserver_listen'   , value: '0.0.0.0'}
+    - { backup : no,   section : 'vnc'               , option : 'vncserver_proxyclient_address'   , value: '$my_ip'}
+    - { backup : no,   section : 'vnc'               , option : 'novncproxy_base_url', value: 'http://{{ NOVA_SERVER_NAME }}:6080/vnc_auto.html'}
+    - { backup : no,   section : 'glance'            , option : 'api_servers'        , value: 'http://{{ NOVA_SERVER_NAME }}:9292'}
+    - { backup : no,   section : 'oslo_concurrency'  , option : 'lock_path'          , value: '/var/lib/nova/tmp'}
+
+- name: Determine hardware acceleration
+  shell: /usr/sbin/kvm-ok | grep 'KVM acceleration'
+  register: KVM_STATUS
+  ignore_errors: True
+  tags: check_kvm
+
+- name: Configure nova-compute.conf file
+  ini_file:
+      dest: /etc/nova/nova-compute.conf
+      section: "{{item.section}}"
+      option:  "{{item.option}}"
+      value:   "{{item.value}}"
+      backup: yes
+  with_items:
+    - { section : 'libvirt', option : 'virt_type' , value: 'qemu'}
+  when: KVM_STATUS.stdout == "KVM acceleration can NOT be used"
+  tags: check_kvm
+
+- name: Restart the Compute service
+  service:
+    state: restarted
+    name: "{{ item }}"
+  with_items:
+    - nova-compute

@@ -1,0 +1,37 @@
+---
+# tasks file for install_mariadb
+- name: Set MySQL root password before installing
+  debconf: name='mysql-server' question='mysql-server/root_password' value='{{MYSQL_ROOT_PASSWORD | quote}}' vtype='password'
+  tags: [mariadb]
+
+- name: Confirm MySQL root password before installing
+  debconf: name='mysql-server' question='mysql-server/root_password_again' value='{{MYSQL_ROOT_PASSWORD | quote}}' vtype='password'
+  tags: [mariadb]
+
+- name: Install MariaDB, PyMySQL
+  apt: pkg={{ item }}
+  with_items:
+    - mariadb-server
+    - python-pymysql
+  tags: [mariadb]
+
+- name: Configure MariaDB
+  blockinfile:
+    dest: /etc/mysql/conf.d/openstack.cnf
+    create: yes
+    insertbefore: BOF
+    block: |
+      [mysqld]
+      bind-address = {{ ansible_default_ipv4.address }}
+      default-storage-engine = innodb
+      innodb_file_per_table
+      max_connections = 4096
+      collation-server = utf8_general_ci
+      character-set-server = utf8
+  tags: [mariadb]
+
+- name : Restart MariaDB
+  service :
+    name : mysql
+    state: restarted
+  tags: [mariadb]
